@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using System.Configuration;
+using System.Data;
 using System.IO;
 using System.Reflection;
 
@@ -16,17 +17,21 @@ namespace NetStash.Storage.Proxy
             {
                 if (initialized) return;
 
-                Directory.CreateDirectory("x86");
-                if (!File.Exists("x86\\SQLite.Interop.dll"))
-                    this.SaveToDisk("NetStash.x86.SQLite.Interop.dll", "x86\\SQLite.Interop.dll");
-
-                Directory.CreateDirectory("x64");
-                if (!File.Exists("x64\\SQLite.Interop.dll"))
-                    this.SaveToDisk("NetStash.x64.SQLite.Interop.dll", "x64\\SQLite.Interop.dll");
-
-                if (!File.Exists(dbFilePath))
+                if (!string.IsNullOrWhiteSpace(this.BaseDirectory))
                 {
-                    System.Data.SQLite.SQLiteConnection.CreateFile(dbFilePath);
+                    Directory.CreateDirectory(Path.GetFullPath(this.BaseDirectory));
+                    System.Environment.SetEnvironmentVariable("PATH", $"{System.Environment.GetEnvironmentVariable("PATH")};{Path.GetFullPath(this.BaseDirectory)}");
+                }
+
+                if (!File.Exists(Path.Combine(this.BaseDirectory, "SQLite.Interop.dll")))
+                {
+                    var resourceName = $"NetStash.{(System.Environment.Is64BitOperatingSystem ? "x64" : "x86")}.SQLite.Interop.dll";
+                    this.SaveToDisk(resourceName, Path.Combine(this.BaseDirectory, "SQLite.Interop.dll"));
+                }
+
+                if (!File.Exists(this.DbFilePath))
+                {
+                    System.Data.SQLite.SQLiteConnection.CreateFile(this.DbFilePath);
 
                     using (var cnn = (System.Data.SQLite.SQLiteConnection)this.GetConnection())
                     {
@@ -49,9 +54,13 @@ namespace NetStash.Storage.Proxy
             }
         }
 
+        internal string BaseDirectory => ConfigurationManager.AppSettings["NetStash.BaseDirectory"] ?? string.Empty;
+
+        internal string DbFilePath => Path.GetFullPath(Path.Combine(this.BaseDirectory, dbFilePath));
+
         internal IDbConnection GetConnection()
         {
-            return new System.Data.SQLite.SQLiteConnection(string.Format("Data Source={0};Version=3;", dbFilePath));
+            return new System.Data.SQLite.SQLiteConnection(string.Format("Data Source={0};Version=3;", this.DbFilePath));
         }
 
         private void SaveToDisk(string file, string name)
